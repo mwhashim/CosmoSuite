@@ -324,8 +324,8 @@ class Application(Frame):
         self.ylabel_Var = StringVar()
         self.ylabel_Entry = Entry(self.PlotOpts_group, textvariable=self.ylabel_Var, width = 8)
         self.ylabel_Entry.grid(row=2, column=3, sticky= W+E+N+S)
-#
-#        Label(self.PlotOpts_group, text = 'x-range').grid(row = 1, column = 3, sticky = W)
+
+        Label(self.PlotOpts_group, text = 'x-range').grid(row = 1, column = 3, sticky = W)
 #
 #        Label(self.PlotOpts_group, text = 'y-range').grid(row = 2, column = 0, sticky = W)
 #
