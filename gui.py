@@ -261,10 +261,10 @@ class Application(Frame):
         #self.text_area.config(state=DISABLED)
         
         #----- Terminal !!
-#        self.Terminal_area = Canvas(self.Term_page, width=600)
-#        self.Terminal_area.pack(fill="both", expand=True)
-#        Term_wid = self.Terminal_area.winfo_id()
-#        os.system('xterm -into %d -aw -geometry 100x12 -sb -bg black -fg white -rightbar -mk_width &' %Term_wid)
+        self.Terminal_area = Canvas(self.Term_page, width=600)
+        self.Terminal_area.pack(fill="both", expand=True)
+        Term_wid = self.Terminal_area.winfo_id()
+        os.system('xterm -into %d -aw -geometry 100x12 -sb -bg black -fg white -rightbar -mk_width &' %Term_wid)
 
     def MainFrame(self, frame):
         self.main_nb = ttk.Notebook(frame, padding = -5)
