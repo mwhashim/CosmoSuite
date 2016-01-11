@@ -1,9 +1,14 @@
 #! /usr/bin/env python
 from __future__ import division
 import os, sys
+
 import logging
+
 from threading import Thread
+from KThread import *
+
 import time
+
 from numpy import *
 import decimal
 from collections import *
@@ -245,14 +250,20 @@ class Application(Frame):
 
     def Terminal_infoPan(self, frame):
         self.TermInfo_nb = ttk.Notebook(frame, padding = -5)
-        self.Info_page = ttk.Frame(self.TermInfo_nb); self.Term_page = ttk.Frame(self.TermInfo_nb)
+        self.Info_page = ttk.Frame(self.TermInfo_nb); self.Logger_page = ttk.Frame(self.TermInfo_nb); self.Term_page = ttk.Frame(self.TermInfo_nb)
         
         #------------------------
-        self.TermInfo_nb.add(self.Info_page, text='Logger & info', sticky = W+E+N+S)
+        self.TermInfo_nb.add(self.Info_page, text='Info', sticky = W+E+N+S)
+        self.TermInfo_nb.add(self.Logger_page, text='Logger', sticky = W+E+N+S)
         self.TermInfo_nb.add(self.Term_page, text='Terminal', sticky = W+E+N+S)
         self.TermInfo_nb.pack(side="top", fill="both", expand=True)
         
         #----- logger !!
+        self.logging_area = Text(self.Logger_page, height=15, width=90, bg='light cyan')
+        self.logging_area.pack(side="top", fill="both", expand=True)
+        #self.text_area.config(state=DISABLED)
+        
+        #----- Info !!
         readme = open('readme.txt')
         self.Welcome_str = readme.read()
         self.text_area = Text(self.Info_page, height=15, width=90, bg='light cyan')
@@ -345,23 +356,35 @@ class Application(Frame):
         self.SetHeader_btt.grid(row = 3, column = 1, columnspan = 1 , sticky = W, pady = 5)
         
         self.SnapPlot_btt = Button(self.Datafile_group, text = u"Snap View", fg='blue', command = self.callback_SnapPlot)
-        self.SnapPlot_btt.grid(row = 3, column = 2, columnspan = 2 , sticky = W, pady = 5)
+        self.SnapPlot_btt.grid(row = 3, column = 2, columnspan = 1 , sticky = W, pady = 5)
         self.SnapView = 'OFF'
+        
+        self.logfiles_list = ['']
+        self.logfiles_Var = StringVar()
+        self.logfiles_Var.trace('w', self.results_refresh)
+        self.logfiles = OptionMenu(self.Datafile_group, self.logfiles_Var, *self.logfiles_list)
+        self.logfiles.grid(row = 3, column = 3, columnspan = 1, pady = 5, sticky = W)
+        self.logfiles.config(width=12)
+        self.logfiles_Var.set(u'select')
     
+        self.logfiles_btt = Button(self.Datafile_group, text = u"log file", fg='blue', command = self.callback_logfile)
+        self.logfiles_btt.grid(row = 3, column = 4, columnspan = 1 , sticky = W, pady = 5)
+        
         self.Add_btt = Button(self.Datafile_group, text = u"Add file", fg='blue', command = self.callback_Addfile)
         self.Add_btt.grid(row = 3, column = 5, columnspan = 1 , sticky = W, pady = 5)
-        
         
         #-------------------------
         self.Filepreview_group = LabelFrame(self.Datafile_Frame, text = "File Preview")
         self.Filepreview_group.grid(row = 1, column = 0, columnspan = 6, sticky = W+E+N+S)
         Grid.rowconfigure(self.Filepreview_group, 1, weight=2)
-
+        
         self.HeaderVar = StringVar()
         self.Header_Entry = Entry(self.Filepreview_group, textvariable=self.HeaderVar, bg = 'white smoke',foreground= 'red', width=40)
+        
+        self.HeaderConversionVar = StringVar()
+        self.HeaderConversion_Entry = Entry(self.Filepreview_group, textvariable=self.HeaderConversionVar, bg = 'white smoke',foreground= 'red', width=40)
         self.header_status = "OFF"
-        #self.Header_Entry.pack(side="top", fill="both", expand=True)
-    
+        
         self.file_preview = Text(self.Filepreview_group, height=16, width=70, bg='white')
         self.file_preview.pack(side="top", fill="both", expand=True)
         #self.file_preview.insert(END, self.Welcome_str)
@@ -378,11 +401,11 @@ class Application(Frame):
         for i in range(2):
             Grid.columnconfigure(self.Plot_List_group, i, weight=2); Grid.rowconfigure(self.Jobs_List_group, i, weight=2)
         
-        self.plotlist = OrderedDict([]); self.fileload = OrderedDict([])
+        self.plotlist = OrderedDict([]); self.plotlist1 = OrderedDict([]); self.fileload = OrderedDict([])
         self.Plot_List_Lb = Listbox(self.Plot_List_group, selectmode = EXTENDED, bg = "white smoke")
         self.Plot_List_Lb.grid(row = 0, column = 0, sticky = W+E+N+S)
         
-        def plot_add(event, test):
+        def plot_add(event, test, test1):
             w = event.widget
             index = int(w.curselection()[0])
     
@@ -392,7 +415,7 @@ class Application(Frame):
             self.xaxis['menu'].delete(0,"end"); self.yaxis['menu'].delete(0,"end")
             self.Snap_xaxis['menu'].delete(0,"end"); self.Snap_yaxis['menu'].delete(0,"end"); self.Snap_zaxis['menu'].delete(0,"end")
             self.Header_dict = OrderedDict([])
-            for choice in test[test.keys()[index]]:
+            for choice in test1[test1.keys()[index]]:
                 if self.SnapView == "OFF":
                     self.xaxis['menu'].add_command(label=choice, command=_setit(self.xaxis_Var, choice))
                     self.yaxis['menu'].add_command(label=choice, command=_setit(self.yaxis_Var, choice))
@@ -403,10 +426,15 @@ class Application(Frame):
         
             for i in range(len(test[test.keys()[index]])):
                 if self.SnapView == "OFF":
-                    self.Header_dict[test[test.keys()[index]][i]] = loadtxt(self.fileload[self.fileload.keys()[index]], unpack=True, usecols = [i])
+                    axis_name = test[test.keys()[index]][i]
+                    vars()[axis_name] = loadtxt(self.fileload[self.fileload.keys()[index]], unpack=True, usecols = [i])
+                    #setattr(self, test[test.keys()[index]][i], loadtxt(self.fileload[self.fileload.keys()[index]], unpack=True, usecols = [i]))
                 else:
                     self.Header_dict[test[test.keys()[index]][i]] = data.values[:,i]
-                
+                    
+            for i in range(len(test1[test1.keys()[index]])):
+                setattr(self, test1[test1.keys()[index]][i], eval(test1[test1.keys()[index]][i]))
+
         def plot_remove(event, test):
             w = event.widget
             index = int(w.curselection()[0])
@@ -417,7 +445,7 @@ class Application(Frame):
             else:
                 self.Snap_xaxis['menu'].delete(0,"end"); self.Snap_yaxis['menu'].delete(0,"end"); self.Snap_zaxis['menu'].delete(0,"end")
 
-        self.Plot_List_Lb.bind('<Return>', lambda event: plot_add(event, self.plotlist))
+        self.Plot_List_Lb.bind('<Return>', lambda event: plot_add(event, self.plotlist, self.plotlist1))
         self.Plot_List_Lb.bind('<BackSpace>', lambda event: plot_remove(event, self.fileload))
         
         self.PlotRefresh_btt = Button(self.Plot_List_group, text = u"Plot Refresh", fg='blue', command = self.callback_Plot_Refresh)
@@ -564,7 +592,7 @@ class Application(Frame):
         self.makercolor_Var.set(u'black')
         
         Label(self.PlotOpts_VSframe.interior, text = 'maker style').grid(row = 5, column = 2, sticky = W)
-        self.makerstyle_list = ['o', '+', '^', 'v']
+        self.makerstyle_list = [' ', 'o', '+', '^', 'v']
         self.makerstyle_Var = StringVar()
         self.makerstyle = OptionMenu(self.PlotOpts_VSframe.interior, self.makerstyle_Var, *self.makerstyle_list)
         self.makerstyle.grid(row = 5, column = 3, columnspan = 1, pady = 5, sticky = W+E+N+S)
@@ -669,8 +697,7 @@ class Application(Frame):
     
     #------------------
     def plot_func(self, *args):
-        Xdata = self.Header_dict[self.xaxis_Var.get()]; Ydata = self.Header_dict[self.yaxis_Var.get()]
-
+        Xdata = getattr(self, self.xaxis_Var.get()); Ydata = getattr(self, self.yaxis_Var.get())
         if self.DataInterpolate_Var.get() == 1:
             Xmean = linspace(Xdata.min(), Xdata.max(), self.BinsNumber_Var.get())
             YdataIntr = UnivariateSpline(Xdata, Ydata, k=self.InterOrder_Var.get(), s = 0)(Xmean)
@@ -682,10 +709,14 @@ class Application(Frame):
                                                        label = self.plotlabel_Var.get())
         
         else:
-            getattr(self.ax1, self.PlotOpts_Var.get())(self.Header_dict[self.xaxis_Var.get()], self.Header_dict[self.yaxis_Var.get()],
+            getattr(self.ax1, self.PlotOpts_Var.get())(Xdata, Ydata,
                                                        linestyle = self.linestyle_Var.get(),
-                                                       linewidth = self.linethcks_Var.get(), color = self.linecolor_Var.get(),
+                                                       linewidth = self.linethcks_Var.get(),
+                                                       marker = self.makerstyle_Var.get(),
+                                                       ms = self.makersize_Var.get(),
+                                                       color = self.linecolor_Var.get(),
                                                        label = self.plotlabel_Var.get())
+
         self.ax1.set_xlabel(self.xlabel_Var.get())
         self.ax1.set_ylabel(self.ylabel_Var.get())
         self.ax1.set_xlim((eval(self.xrange_Var.get())))
@@ -1404,13 +1435,17 @@ class Application(Frame):
 
         self.QStat = Button(self.Control_Frame, text = u"QStat", command =self.callback_QStat)
         self.QStat.grid(column = 2, row = 0, sticky= W+E+N+S, pady = 5)
+        
+        self.Qlog = Button(self.Control_Frame, text = u"Logging", command =self.callback_Qlog)
+        self.Qlog.grid(column = 3, row = 0, sticky= W+E+N+S, pady = 5)
+        self.logging_status = "ON"
 
         self.clear_button = Button(self.Control_Frame, text="QDel", command= self.callback_QDel)
-        self.clear_button.grid(column = 3, row = 0, sticky = W+E+N+S, pady = 5)
+        self.clear_button.grid(column = 4, row = 0, sticky = W+E+N+S, pady = 5)
 
         self.QJob_Var = StringVar()
         self.QJob_Entry = Entry(self.Control_Frame, textvariable = self.QJob_Var, foreground = 'red')
-        self.QJob_Entry.grid(column = 4, row = 0, sticky = W+E+N+S, pady = 5)
+        self.QJob_Entry.grid(column = 5, row = 0, sticky = W+E+N+S, pady = 5)
 
         #-----------------------------------
         self.Jobs_List_group = LabelFrame(self.Control_Frame, text = "Jobs List")
@@ -1449,11 +1484,26 @@ class Application(Frame):
             self.Running_Jobs_Lb.delete(ANCHOR)
             for i in range(len(test[test.keys()[index]])):
                 self.Run_Delete(test[test.keys()[index]][i])
-
+        
+        def logfile_add(event, test):
+            w = event.widget
+            index = int(w.curselection()[0])
+            logname = self.Run_nameVar.get() + '_' + test[test.keys()[index]][-1] + '.output'
+            self.logfile_name = os.path.join(self.Remote_DirtVar.get(), self.Run_nameVar.get(), logname)
+            self.logging_status = "ON"
+            #self.logfile_name = self.sftp.open(logfile1_loc, 'r')
+            
+        def logfile_close(event, test):
+            w = event.widget
+            index = int(w.curselection()[0])
+            self.logging_status = "OFF"
+        
         self.Jobs_List_Lb.bind('<Return>', lambda event: Job_add(event, self.list))
         self.Running_Jobs_Lb.bind('<BackSpace>', lambda event: Job_remove(event, self.list))
-            
-    #----------------------------------------------------------
+        self.Running_Jobs_Lb.bind('<Return>', lambda event: logfile_add(event, self.list))
+        self.Running_Jobs_Lb.bind('<Double-Button-1>', lambda event: logfile_close(event, self.list))
+        
+    #------------------------------------------------------
     def callback_codes(self):
         self.main_nb.select(self.Main_page); self.NewRun_nb.select(self.Codes_Compile_page)
     
@@ -1489,7 +1539,7 @@ class Application(Frame):
         self.text_area.insert(END, self.Welcome_str)
     
     def callback_log(self):
-        self.TermInfo_nb.select(self.Info_page)
+        self.TermInfo_nb.select(self.Logger_page)
         self.text_area.delete(1.0, END)
     
     def callback_run_network_mode(self,event):
@@ -1528,10 +1578,32 @@ class Application(Frame):
         self.text_area.delete(1.0, END)
         self.text_area.insert(END, stdout.read())
     
+    def callback_Qlog(self):
+    
+        def logread():
+            stdouttail = self.client.exec_command('tail -f ' + self.logfile_name)[1]
+            while True:
+                if self.logging_status == "ON":
+                    line = stdouttail.readline()
+                    logger.info(line)
+                elif self.logging_status == "OFF":
+                    break
+    
+        #------------
+        self.logging_area.delete(1.0, END)
+        t = Thread(target=logread)
+        stdoutconsl = StdoutDirector(self.logging_area)
+        logger = logging.getLogger()
+        console = logging.StreamHandler(stream=stdoutconsl)
+        logger.addHandler(console)
+        t.daemon = True
+        #-----------------------------
+        t.start()
+
     def callback_QDel(self):
-        stdin, stdout, stderr = self.client.exec_command('qdel ' + self.QJob_Var.get())
+        stdin, stdoutqdel, stderr = self.client.exec_command('qdel ' + self.QJob_Var.get())
         self.text_area.delete(1.0, END)
-        self.text_area.insert(END, stdout.read())
+        self.text_area.insert(END, stdoutqdel.read())
         self.callback_QStat()
 
 
@@ -1652,7 +1724,7 @@ class Application(Frame):
         x.write_param_file(JobID, self.Update_Param_Dicts()[JobID])
         if self.run_mode_logic != "local":
             xx = main(self.Remote_DirtVar.get(), self.Run_nameVar.get())
-            x.write_pbs_job(xx.loc_Exc, xx.loc_param, N_c, N_p, JobID, JobID.partition('_')[0], self.Email_Var.get())
+            x.write_pbs_job(xx.loc_run_name, xx.loc_Exc, xx.loc_param, N_c, N_p, JobID, JobID.partition('_')[0], self.Email_Var.get())
             x.grid_make_idl(xx.loc_ICs, self.Box_SizeVar.get(), self.N_partVar.get()); x.camb_to_gadget(xx.loc_ICs)
             x.qsub_task_run(xx.loc_pbs_jobs, self.Running_Jobs_Lb.get(1, END))
         
@@ -1700,7 +1772,7 @@ class Application(Frame):
             Dirct_Var_dict = self.AHF_Dirct_Var.get()
             x.write_makefile('param.h', PrDt.param_h_file_dict)
         elif job == "POWMS":
-            Dirct_Var_dict = self.POWMS_Dirct_Var.get()
+            Dirct_Var_dict = self.POWMS_Dirct_Var.get() + '/bin'
 
         #-------------------------------------------
         if self.run_mode_logic == "local":
@@ -1892,9 +1964,10 @@ class Application(Frame):
             Results_loc = os.path.join(self.ModelRemote_DirtVar.get(), self.RunName_Var.get())
             self.Results_Files_new = sorted(self.sftp.listdir(Results_loc))
 
-        self.RunResults['menu'].delete(0,"end")
+        self.RunResults['menu'].delete(0,"end"); self.logfiles['menu'].delete(0,"end")
         for choice in self.Results_Files_new:
             self.RunResults['menu'].add_command(label=choice, command=_setit(self.RunResults_Var, choice))
+            self.logfiles['menu'].add_command(label=choice, command=_setit(self.logfiles_Var, choice))
 
     def datafiles_refresh(self, *args):
         if self.run_mode_logic == "local":
@@ -1915,17 +1988,24 @@ class Application(Frame):
     
     def callback_setheader(self):
         if self.header_status == "OFF":
-            self.Header_Entry.pack(side="top", fill="both", expand=True)
+            self.Header_Entry.pack(side="left", fill="both", expand=True)
+            self.HeaderConversion_Entry.pack(side="right", fill="both", expand=True)
             self.header_status = "ON"
         else:
             self.Header_Entry.pack_forget()
+            self.HeaderConversion_Entry.pack_forget()
             self.header_status = "OFF"
 
     def callback_Addfile(self):
         self.fileload[self.Runfile_Var.get()] = os.path.join(self.ModelDirtVar.get(), self.RunName_Var.get(), self.RunResults_Var.get(), self.Runfile_Var.get())
         self.plotlist[self.Runfile_Var.get()] = self.HeaderVar.get().split()
+        self.plotlist1[self.Runfile_Var.get()] = self.HeaderConversionVar.get().split()
         self.Plot_List_Lb.insert(END, self.Runfile_Var.get())
 
+    def callback_logfile(self):
+        logfile_loc = os.path.join(self.ModelRemote_DirtVar.get(), self.RunName_Var.get(), self.logfiles_Var.get())
+        logfile_read = self.sftp.open(logfile_loc, 'r')
+        VL.ViewLog(self.master, logfile_read.read())
     #---------------------------------
     def callback_NBodyTrace(self, *args):
         if self.run_mode_logic == "local":

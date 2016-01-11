@@ -51,7 +51,7 @@ class main(object):
         f.close()
 
     #----------------------------
-    def write_pbs_job(self, loc_Exc, loc_param, np, nc, code, Exctbl, Email):
+    def write_pbs_job(self, Dirct, loc_Exc, loc_param, np, nc, code, Exctbl, Email):
         f = open(self.loc_pbs_jobs + code + '.pbs', 'w')
         f.write('#!/bin/bash \n\
 #PBS -l nodes=%s:ppn=%s \n\
@@ -60,13 +60,13 @@ class main(object):
 #PBS -N %s \n\
 #PBS -V \n\
 #PBS -M %s \n\
-#PBS -e ./%s/%s.error \n\
-#PBS -o ./%s/%s.output \n\
-#PBS -d ./ \n' %(np, nc,  self.Run_name + '_' + code, Email, self.Run_name, self.Run_name+ '_' + code, self.Run_name, self.Run_name+ '_' + code))
+#PBS -e %s/%s.error \n\
+#PBS -o %s/%s.output \n\
+#PBS -d ./ \n' %(np, nc,  self.Run_name + '_' + code, Email, Dirct, self.Run_name+ '_' + code, Dirct, self.Run_name+ '_' + code))
         if  Exctbl != "AHF":
             f.write('\nmodule purge\n\
 module add apps/plc/1.1\n\
-module add apps/idl/8.3\n\
+module add apps/idl/8.5\n\
 module add compilers/intel/intel-64.v13.1.046\n\
 module add mpi/openmpi/1.4.3/intel-64.v13.1.046\n')
                 
