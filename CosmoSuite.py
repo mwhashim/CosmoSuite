@@ -1,5 +1,7 @@
 from __future__ import division
 import os, sys
+sys.setrecursionlimit(50000) # to solve maximum recursion depth exceeded error !!
+
 from numpy import *
 from collections import *
 import time
@@ -120,13 +122,18 @@ end ')
             f.write('\n%s_%s=`qsub -W depend=afterok:$%s_1 '  %(self.Run_name, i + 2, self.Run_name) + loc_pbs_jobs + Joblist[i].strip("['']") + '.pbs`')
         f.close()
 
-    def output_times(self, z_ini, z_f, NSnaps):
+    def output_times(self, z_ini, z_f, NSnaps, st, z_out):
         a_ini = 1.0/(1.0 + z_ini); a_f = 1.0/(1.0 + z_f)
         f = open(self.loc_Snaps + 'Output_times', 'w')
         log_a_start = log10(a_ini); log_a_end   = log10(a_f)
         log_a_bin = (log_a_end-log_a_start)/(NSnaps-1.0)
         log_a_output = [log_a_start + (i * log_a_bin) for i in range(NSnaps)]
-        a_output  = [10.0**log_a_output[i] for i in range(NSnaps)]
+
+        if st == "True":
+            a_output = 1.0/(1.0 + array(z_out))
+        else:
+            a_output  = [10.0**log_a_output[i] for i in range(NSnaps)]
+        
         for i in range(NSnaps):
             f.write('%s\n' %a_output[i])
         f.close()

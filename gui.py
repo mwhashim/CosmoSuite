@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 from __future__ import division
 import os, sys
+sys.setrecursionlimit(50000) # to solve maximum recursion depth exceeded error !!
 
 import logging
 
@@ -61,17 +62,7 @@ def subprocess_cmd(command):
     proc_stdout = process.communicate()[0].strip()
     return proc_stdout
 
-class IODirector(object):
-    def __init__(self, text_area):
-        self.text_area = text_area
-
-class StdoutDirector(IODirector):
-    def write(self, msg):
-        self.text_area.insert(END, msg)
-        self.text_area.see(END)
-    
-    def flush(self):
-        pass
+from StdoutDirector import StdoutDirector
 
 #----------------------------------
 class Application(Frame):
@@ -92,11 +83,12 @@ class Application(Frame):
 
         #---------------------------------------
         self.initialize()
-        self.Toolbar(self.Frame_1); self.MainFrame(self.Frame_2)
-        self.PlotPan(self.Frame_3); self.Terminal_infoPan(self.Frame_4)
+        self.Toolbar(self.Frame_1); self.Terminal_infoPan(self.Frame_4)
+        self.PlotPan(self.Frame_3); self.MainFrame(self.Frame_2)
         
     def initialize(self):
         
+        #--------------------------------------
         style = ttk.Style()
         style.layout('TNotebook.Tab', [])
         
@@ -221,11 +213,17 @@ class Application(Frame):
         
         Label(frame, text = "", bg='white smoke', height = 2).pack(side="left")
         
-        results_photo = PhotoImage(file="label_photos/results.gif")
-        self.results = Button(frame, text = u"Home", fg='blue', image = results_photo, command = self.callback_Home)
-        self.results.photo = results_photo
+        Analysis_photo = PhotoImage(file="label_photos/Analysis.gif")
+        self.results = Button(frame, text = u"Home", fg='blue', image =Analysis_photo, command = self.callback_Home)
+        self.results.photo = Analysis_photo
         self.results.grid(column = 1, row = 0, sticky = W+E+N+S, pady = 5)
         self.results.pack(side="left")
+        
+        self.results_photo = PhotoImage(file="label_photos/results.gif")
+        self.SnapPlot_btt = Button(frame, text = u"Snap View", image = self.results_photo, fg='blue', command = self.callback_SnapPlot)
+        self.SnapPlot_btt.photo = self.results_photo
+        self.SnapPlot_btt.pack(side="left")
+        self.SnapView = 'OFF'
     
         self.run_mode_logic = "local"
         self.ModelRemote_DirtVar = StringVar()
@@ -259,7 +257,7 @@ class Application(Frame):
         self.TermInfo_nb.pack(side="top", fill="both", expand=True)
         
         #----- logger !!
-        self.logging_area = Text(self.Logger_page, height=15, width=90, bg='light cyan')
+        self.logging_area = Text(self.Logger_page, height=15, width=90, bg = 'black', fg='light cyan')
         self.logging_area.pack(side="top", fill="both", expand=True)
         #self.text_area.config(state=DISABLED)
         
@@ -278,6 +276,19 @@ class Application(Frame):
         os.system('xterm -into %d -aw -geometry 100x12 -sb -bg black -fg white -rightbar -mk_width &' %Term_wid)
 
     def MainFrame(self, frame):
+        #---------------------------------------
+        stdoutconsl = StdoutDirector(self.logging_area)
+        self.logger = logging.getLogger('CosmoSuite v(1.0)')
+        self.console = logging.StreamHandler(stream=stdoutconsl)
+        self.logger.addHandler(self.console)
+        self.logger.setLevel(logging.DEBUG)
+        self.formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        self.console.setFormatter(self.formatter)
+        
+        # logger:--
+        self.logger.info('Welcome to CosmoSuite (v.1)')
+        
+        #------------------------
         self.main_nb = ttk.Notebook(frame, padding = -5)
         self.Main_page = ttk.Frame(self.main_nb); self.Anals_page = ttk.Frame(self.main_nb);  self.SysPerf_page = ttk.Frame(self.main_nb)
             
@@ -287,6 +298,7 @@ class Application(Frame):
         self.main_nb.add(self.SysPerf_page, text='System Preferences')
         self.main_nb.pack(side="top", fill="both", expand=True)
     
+        self.main_nb.select(self.Anals_page)
         #------------------------
         self.MainPage(self.Main_page); self.SysPerfPage(self.SysPerf_page); self.AnalysResultsPage(self.Anals_page)
     
@@ -311,14 +323,14 @@ class Application(Frame):
         
         for x in range(2):
             Grid.columnconfigure(self.Datafile_group, x, weight=2)
-#        for y in range(2):
-#            Grid.rowconfigure(self.Datafile_group, y, weight=2)
+        for y in range(2):
+            Grid.rowconfigure(self.Datafile_group, y, weight=2)
 
         Label(self.Datafile_group, text="Local Directory").grid(row=0, column=0, sticky= W)
         self.ModelDirtVar = StringVar()
         self.ModelDirtVar.trace('w', self.models_refresh)
-        self.ModelDirct = Entry(self.Datafile_group, textvariable=self.ModelDirtVar, foreground= 'red', width=40)
-        self.ModelDirct.grid(row=0, column=1, columnspan = 4, sticky= W)
+        self.ModelDirct = Entry(self.Datafile_group, textvariable=self.ModelDirtVar, foreground= 'red', width=35)
+        self.ModelDirct.grid(row=0, column=1, columnspan = 3, sticky= W)
         self.ModelDirct.bind("<Button-1>", self.ModelDirectory)
         
         #----------------------------
@@ -355,23 +367,19 @@ class Application(Frame):
         self.SetHeader_btt = Button(self.Datafile_group, text = u"Set Header", fg='blue', command = self.callback_setheader)
         self.SetHeader_btt.grid(row = 3, column = 1, columnspan = 1 , sticky = W, pady = 5)
         
-        self.SnapPlot_btt = Button(self.Datafile_group, text = u"Snap View", fg='blue', command = self.callback_SnapPlot)
-        self.SnapPlot_btt.grid(row = 3, column = 2, columnspan = 1 , sticky = W, pady = 5)
-        self.SnapView = 'OFF'
+        self.FileUpdate_btt = Button(self.Datafile_group, text = u"File Update", fg='blue', command = self.callback_file_update)
+        self.FileUpdate_btt.grid(row = 3, column = 5, columnspan = 1 , sticky = W, pady = 5)
         
         self.logfiles_list = ['']
         self.logfiles_Var = StringVar()
         self.logfiles_Var.trace('w', self.results_refresh)
         self.logfiles = OptionMenu(self.Datafile_group, self.logfiles_Var, *self.logfiles_list)
-        self.logfiles.grid(row = 3, column = 3, columnspan = 1, pady = 5, sticky = W)
-        self.logfiles.config(width=12)
+        self.logfiles.grid(row = 0, column = 4, columnspan = 1, pady = 5, sticky = W)
+        self.logfiles.config(width=10)
         self.logfiles_Var.set(u'select')
     
         self.logfiles_btt = Button(self.Datafile_group, text = u"log file", fg='blue', command = self.callback_logfile)
-        self.logfiles_btt.grid(row = 3, column = 4, columnspan = 1 , sticky = W, pady = 5)
-        
-        self.Add_btt = Button(self.Datafile_group, text = u"Add file", fg='blue', command = self.callback_Addfile)
-        self.Add_btt.grid(row = 3, column = 5, columnspan = 1 , sticky = W, pady = 5)
+        self.logfiles_btt.grid(row = 0, column = 5, columnspan = 1 , sticky = W, pady = 5)
         
         #-------------------------
         self.Filepreview_group = LabelFrame(self.Datafile_Frame, text = "File Preview")
@@ -379,15 +387,17 @@ class Application(Frame):
         Grid.rowconfigure(self.Filepreview_group, 1, weight=2)
         
         self.HeaderVar = StringVar()
-        self.Header_Entry = Entry(self.Filepreview_group, textvariable=self.HeaderVar, bg = 'white smoke',foreground= 'red', width=40)
+        self.Header_Entry = Entry(self.Filepreview_group, textvariable=self.HeaderVar, bg = 'white smoke',foreground= 'red', width=30)
         
         self.HeaderConversionVar = StringVar()
-        self.HeaderConversion_Entry = Entry(self.Filepreview_group, textvariable=self.HeaderConversionVar, bg = 'white smoke',foreground= 'red', width=40)
+        self.HeaderConversion_Entry = Entry(self.Filepreview_group, textvariable=self.HeaderConversionVar, bg = 'white smoke',foreground= 'red', width=30)
         self.header_status = "OFF"
         
-        self.file_preview = Text(self.Filepreview_group, height=16, width=70, bg='white')
+        self.file_preview = Text(self.Filepreview_group, height=15, width=70, bg='white')
         self.file_preview.pack(side="top", fill="both", expand=True)
         #self.file_preview.insert(END, self.Welcome_str)
+        
+        self.Add_btt = Button(self.Filepreview_group, text = u"Add file", fg='blue', command = self.callback_Addfile)
         
         #------------------------
         self.Plot_Frame = Frame(page, bg="white smoke", bd= 1, relief= RIDGE)
@@ -404,7 +414,22 @@ class Application(Frame):
         self.plotlist = OrderedDict([]); self.plotlist1 = OrderedDict([]); self.fileload = OrderedDict([])
         self.Plot_List_Lb = Listbox(self.Plot_List_group, selectmode = EXTENDED, bg = "white smoke")
         self.Plot_List_Lb.grid(row = 0, column = 0, sticky = W+E+N+S)
-        
+
+        def RSD_plot_add(event, test, test1):
+            w = event.widget
+            index = int(w.curselection()[0])
+            self.Resdxaxis['menu'].delete(0,"end"); self.Resdyaxis['menu'].delete(0,"end")
+            # Residual :---------
+            for choice in test1[test1.keys()[index]]:
+                self.Resdxaxis['menu'].add_command(label=choice, command=_setit(self.Resdxaxis_Var, choice))
+                self.Resdyaxis['menu'].add_command(label=choice, command=_setit(self.Resdyaxis_Var, choice))
+            for i in range(len(test[test.keys()[index]])):
+                axis_name = test[test.keys()[index]][i]
+                vars()[axis_name] = loadtxt(self.fileload[self.fileload.keys()[index]], unpack=True, usecols = [i])
+                    
+            for i in range(len(test1[test1.keys()[index]])):
+                setattr(self, test1[test1.keys()[index]][i], eval(test1[test1.keys()[index]][i]))
+
         def plot_add(event, test, test1):
             w = event.widget
             index = int(w.curselection()[0])
@@ -415,6 +440,8 @@ class Application(Frame):
             self.xaxis['menu'].delete(0,"end"); self.yaxis['menu'].delete(0,"end")
             self.Snap_xaxis['menu'].delete(0,"end"); self.Snap_yaxis['menu'].delete(0,"end"); self.Snap_zaxis['menu'].delete(0,"end")
             self.Header_dict = OrderedDict([])
+
+            #--------------------
             for choice in test1[test1.keys()[index]]:
                 if self.SnapView == "OFF":
                     self.xaxis['menu'].add_command(label=choice, command=_setit(self.xaxis_Var, choice))
@@ -446,6 +473,7 @@ class Application(Frame):
                 self.Snap_xaxis['menu'].delete(0,"end"); self.Snap_yaxis['menu'].delete(0,"end"); self.Snap_zaxis['menu'].delete(0,"end")
 
         self.Plot_List_Lb.bind('<Return>', lambda event: plot_add(event, self.plotlist, self.plotlist1))
+        self.Plot_List_Lb.bind('<Double-Button-1>', lambda event: RSD_plot_add(event, self.plotlist, self.plotlist1))
         self.Plot_List_Lb.bind('<BackSpace>', lambda event: plot_remove(event, self.fileload))
         
         self.PlotRefresh_btt = Button(self.Plot_List_group, text = u"Plot Refresh", fg='blue', command = self.callback_Plot_Refresh)
@@ -636,50 +664,62 @@ class Application(Frame):
         self.ShowResud_Var = IntVar()
         self.ShowResud_ChkBtt = Checkbutton(self.PlotOpts_VSframe.interior, text = 'Show RSD', variable = self.ShowResud_Var)
         self.ShowResud_ChkBtt.grid(row = 9, column = 0, sticky = W)
+        self.ShowResud_ChkBtt.bind('<Button-1>', self.callback_show_RSD)
 
-        Label(self.PlotOpts_VSframe.interior, text = 'RSD y-axis').grid(row = 9, column = 1, sticky = W)
+        Label(self.PlotOpts_VSframe.interior, text = 'RSD x-axis').grid(row = 10, column = 0, sticky = W)
+        self.Resdxaxis_list = ['']
+        self.Resdxaxis_Var = StringVar()
+        self.Resdxaxis = OptionMenu(self.PlotOpts_VSframe.interior, self.Resdxaxis_Var, *self.Resdxaxis_list)
+        self.Resdxaxis.grid(row = 10, column = 1, columnspan = 1, pady = 5, sticky = W+E+N+S)
+        self.Resdxaxis.config(width=12)
+        self.Resdxaxis_Var.set(u'select')
+
+        Label(self.PlotOpts_VSframe.interior, text = 'RSD y-axis').grid(row = 10, column = 2, sticky = W)
         self.Resdyaxis_list = ['']
         self.Resdyaxis_Var = StringVar()
         self.Resdyaxis = OptionMenu(self.PlotOpts_VSframe.interior, self.Resdyaxis_Var, *self.Resdyaxis_list)
-        self.Resdyaxis.grid(row = 9, column = 2, columnspan = 1, pady = 5, sticky = W+E+N+S)
+        self.Resdyaxis.grid(row = 10, column = 3, columnspan = 1, pady = 5, sticky = W+E+N+S)
         self.Resdyaxis.config(width=12)
         self.Resdyaxis_Var.set(u'select')
         
-        Label(self.PlotOpts_VSframe.interior, text = 'RSD y-label').grid(row = 10, column = 0, sticky = W)
+        Label(self.PlotOpts_VSframe.interior, text = 'RSD y-label').grid(row = 11, column = 0, sticky = W)
         self.Resdylabel_Var = StringVar()
         self.Resdylabel_Entry = Entry(self.PlotOpts_VSframe.interior, textvariable=self.Resdylabel_Var, width = 8)
-        self.Resdylabel_Entry.grid(row=10, column=1, sticky= W+E+N+S)
+        self.Resdylabel_Entry.grid(row=11, column=1, sticky= W+E+N+S)
 
-        Label(self.PlotOpts_VSframe.interior, text = 'RSD y-range').grid(row = 10, column = 2, sticky = W)
+        Label(self.PlotOpts_VSframe.interior, text = 'RSD y-range').grid(row = 11, column = 2, sticky = W)
         self.Resdyrange_Var = StringVar()
         self.Resdyrange_Entry = Entry(self.PlotOpts_VSframe.interior, textvariable=self.Resdyrange_Var, width = 8)
-        self.Resdyrange_Entry.grid(row=10, column=3, sticky= W+E+N+S)
+        self.Resdyrange_Entry.grid(row=11, column=3, sticky= W+E+N+S)
 
         self.DataInterpolate_Var = IntVar()
         self.DataInterpolate_ChkBtt = Checkbutton(self.PlotOpts_VSframe.interior, text = 'Data Interpolate', variable = self.DataInterpolate_Var)
-        self.DataInterpolate_ChkBtt.grid(row = 11, column = 0, columnspan = 2,sticky = W)
+        self.DataInterpolate_ChkBtt.grid(row = 12, column = 0, columnspan = 2,sticky = W)
 
-        Label(self.PlotOpts_VSframe.interior, text = 'Order').grid(row = 12, column = 0, sticky = W)
+        Label(self.PlotOpts_VSframe.interior, text = 'Order').grid(row = 13, column = 0, sticky = W)
         self.InterOrder_Var = IntVar()
         self.InterOrder_Entry = Entry(self.PlotOpts_VSframe.interior, textvariable=self.InterOrder_Var, width = 4)
-        self.InterOrder_Entry.grid(row=12, column=1, sticky= W+E+N+S)
+        self.InterOrder_Entry.grid(row=13, column=1, sticky= W+E+N+S)
 
-        Label(self.PlotOpts_VSframe.interior, text = 'Bins Number').grid(row = 12, column = 2, sticky = W)
+        Label(self.PlotOpts_VSframe.interior, text = 'Bins Number').grid(row = 13, column = 2, sticky = W)
         self.BinsNumber_Var = IntVar()
         self.BinsNumber_Entry = Entry(self.PlotOpts_VSframe.interior, textvariable=self.BinsNumber_Var, width = 4)
-        self.BinsNumber_Entry.grid(row=12, column=3, sticky= W+E+N+S)
+        self.BinsNumber_Entry.grid(row=13, column=3, sticky= W+E+N+S)
 
     #----------------------------
     def callback_SnapPlot(self):
         if self.SnapView == 'OFF':
+            Snap_photo = PhotoImage(file="label_photos/snapshot.gif")
             self.PlotOpts_VSframe.pack_forget()
             self.SnapViewOpts_VSframe.pack(side="top", fill="both", expand=True)
-            self.SnapPlot_btt.configure(bg = 'blue')
+            self.SnapPlot_btt.configure(image = Snap_photo)
+            self.SnapPlot_btt.photo = Snap_photo
             self.SnapView = 'ON'
         else:
             self.SnapViewOpts_VSframe.pack_forget()
             self.PlotOpts_VSframe.pack(side="top", fill="both", expand=True)
-            self.SnapPlot_btt.configure(bg = 'white')
+            self.SnapPlot_btt.configure(image = self.results_photo)
+            self.SnapPlot_btt.photo = self.results_photo
             self.SnapView = 'OFF'
 
     def callback_SnapView(self):
@@ -719,6 +759,7 @@ class Application(Frame):
 
         self.ax1.set_xlabel(self.xlabel_Var.get())
         self.ax1.set_ylabel(self.ylabel_Var.get())
+        
         self.ax1.set_xlim((eval(self.xrange_Var.get())))
         self.ax1.set_ylim((eval(self.yrange_Var.get())))
         #self.ax1.set_xticks((eval(self.xticks_Var.get())))
@@ -728,21 +769,40 @@ class Application(Frame):
             self.ax1.legend(loc = 'best', prop = {'size':9})
         
         if self.ShowResud_Var.get() == 1:
-            self.ax2 = subplot(self.gs[1])
-            #self.ax1.set_xticks(())
-            #yticks = self.ax1.yaxis.get_major_ticks()
-            #yticks[0].label1.set_visible(False)
+            self.ax1.set_xticks(()); yticks = self.ax1.yaxis.get_major_ticks(); yticks[0].label1.set_visible(False)
             self.ax2.axhline(linewidth=0.5, color='b', linestyle = '--')
+            RESDXdata = getattr(self, self.Resdxaxis_Var.get()); RESDYdata = getattr(self, self.Resdyaxis_Var.get())
+            Xmean = linspace(RESDXdata.min(), RESDXdata.max(), self.BinsNumber_Var.get())
+            Y0dataIntr = UnivariateSpline(Xdata, Ydata, k=self.InterOrder_Var.get(), s = 0)(Xmean)
+            YRdataIntr = UnivariateSpline(RESDXdata, RESDYdata, k=self.InterOrder_Var.get(), s = 0)(Xmean)
+            getattr(self.ax2, self.PlotOpts_Var.get())(Xmean, ((YRdataIntr - Y0dataIntr)/Y0dataIntr) * 100,
+                                           marker = self.makerstyle_Var.get(),
+                                           linestyle = self.linestyle_Var.get(),
+                                           ms = self.makersize_Var.get(),
+                                           color = self.makercolor_Var.get(),
+                                           label = self.plotlabel_Var.get())
+                                           
+            self.ax2.set_xlabel(self.xlabel_Var.get())
+            self.ax2.set_ylabel(self.Resdylabel_Var.get())
+
+
+
+        self.canvas.show()
+
+    def callback_Plot_Refresh(self):
+        self.ax1.clear()
+        if self.ShowResud_Var.get() == 1:
+            self.ax2.clear()
+        self.canvas.show()
+
+    def callback_show_RSD(self, event):
+        if self.ShowResud_Var.get() == 0:
+            self.ax2 = subplot(self.gs[1])
         else:
             self.ax2 = subplot(self.gs[1])
             #self.ax1.set_xticks((None))
             #yticks[0].label1.set_visible(True)
             self.f.delaxes(self.ax2)
-
-        self.canvas.show()
-
-    def callback_Plot_Refresh(self):
-        self.ax1.clear(); self.canvas.show()
 
     #----------------------------
     def SysPerfPage(self, page):
@@ -881,7 +941,7 @@ class Application(Frame):
         for x in range(13):
             Grid.columnconfigure(self.NewRun_page, x, weight=2)
         
-        for y in range(4):
+        for y in range(6):
             Grid.rowconfigure(self.NewRun_page, y, weight=2)
         
         self.Name_Dict_group = LabelFrame(self.NewRun_page, text = "Run Name & Directory")
@@ -1004,111 +1064,196 @@ class Application(Frame):
         self.n_s.grid(row=2, column=5, sticky= W+E+N+S, pady = 5)
 
         #------------------------------
-        self.RunSeting_group = LabelFrame(self.NewRun_page, text = "Run Setting")
-        self.RunSeting_group.grid(row = 2, column = 0, columnspan = 6, sticky = W+E+N+S)
+        self.RunSeting_gFrame = LabelFrame(self.NewRun_page, text = "Run Setting")
+        self.RunSeting_gFrame.grid(row = 4, column = 0, columnspan = 6, rowspan = 1, sticky = W+E+N+S)
         Grid.rowconfigure(self.NewRun_page, 2, weight=0)
         
+        self.RunSeting_Frame = VSF.VerticalScrolledFrame(self.RunSeting_gFrame)
+        self.RunSeting_Frame.pack(side="top", fill="both", expand=True)
+        
+        for x in range(13):
+            Grid.columnconfigure(self.RunSeting_Frame.interior, x, weight=2)
 
         for x in range(13):
-            Grid.columnconfigure(self.RunSeting_group, x, weight=2)
+            Grid.columnconfigure(self.RunSeting_gFrame, x, weight=2)
 
-        for y in range(4):
-            Grid.rowconfigure(self.RunSeting_group, y, weight=2)
+#        for y in range(4):
+#            Grid.rowconfigure(self.RunSeting_group, y, weight=2)
+
+        self.Jobs_Opts = ["N-Body Simulation", "+AHF", "+POWMS", "CAMB", "HMFcal", "CDEPNGpy"]
+        self.JobsOpt_Var = StringVar()
+        self.JobsOpt = OptionMenu(self.RunSeting_Frame.interior, self.JobsOpt_Var, *self.Jobs_Opts, command = self.JobsOpt_Select)
+        self.JobsOpt.grid(row = 0, column = 0, columnspan = 1, rowspan = 1, sticky = W+E+N+S)
+        self.JobsOpt.config(width=12)
+        self.JobsOpt_Var.set(u'Select')
+
+        self.AddJobList_button = Button(self.RunSeting_Frame.interior, text="Add Job", command= self.callback_AddJobList)
+        self.AddJobList_button.grid(column = 1, row = 0, columnspan = 1 , sticky = W+E+N+S, pady = 5)
+
+        self.NBodyParms_group = LabelFrame(self.RunSeting_Frame.interior, text = "N-Body Parameters")
+        #self.NBodyParms_group.grid(row = 1, column = 0, columnspan = 6, rowspan = 1, sticky = W+E+N+S)
+        
+        for x in range(8):
+            Grid.columnconfigure(self.NBodyParms_group, x, weight=2)
+    
+        # N-Body Simulation Parameters :------- !!
+        Label(self.NBodyParms_group, text="Box Size").grid(row=0, column=0, sticky= W)
+        self.Box_SizeVar =  IntVar()
+        self.Box_SizeVar.trace("w", self.callback_NBodyTrace)
+        self.Box_Size = Entry(self.NBodyParms_group, textvariable=self.Box_SizeVar, width=10)
+        self.Box_Size.grid(row = 0, column = 1, sticky = W+E+N+S)
+        self.Box_Size.bind("<Return>", self.callback_Update_Entry)
+        Tooltip.ToolTip(self.Box_Size, follow_mouse = 1, text = "Please Enter Box Size in Mpc units")
+        
+        Label(self.NBodyParms_group, text="N_part").grid(row=0, column=2, sticky= W)
+        self.N_partVar= IntVar()
+        self.N_partVar.trace("w", self.callback_NBodyTrace)
+        self.N_partVar.trace("w", self.callback_MakeOptionsTrace)
+        self.N_part= Entry(self.NBodyParms_group, textvariable=self.N_partVar, width=10)
+        self.N_part.grid(row=0, column=3, sticky= W+E+N+S)
+        Tooltip.ToolTip(self.N_part, follow_mouse=1, text="Please Enter Number of Particles^1/3")
+        
+        Label(self.NBodyParms_group, text="epsilon").grid(row=0, column=4, sticky= W)
+        self.epsilonVar = DoubleVar()
+        self.epsilonVar.trace("w", self.callback_NBodyTrace)
+        self.epsilon= Entry(self.NBodyParms_group, textvariable=self.epsilonVar, width=10)
+        self.epsilon.grid(row=0, column=5, sticky= W+E+N+S)
+        self.epsilon.bind("<Button-1>", self.softining_length)
+        Tooltip.ToolTip(self.epsilon, follow_mouse=1, text="Please Enter the Linkining length in Mpc units.")
+        
+        Label(self.NBodyParms_group, text="eta").grid(row=1, column=0, sticky= W)
+        self.etaVar= DoubleVar()
+        self.etaVar.trace("w", self.callback_NBodyTrace)
+        self.eta= Entry(self.NBodyParms_group, textvariable=self.etaVar, width=10)
+        self.eta.grid(row=1, column=1, sticky= W+E+N+S)
+        
+        self.Initial_Redshift_label = Label(self.NBodyParms_group, text=u"Initial Redshift")
+        self.Initial_Redshift_label.grid(row=1, column=2, sticky= W)
+        self.Init_Redshift_Var = DoubleVar()
+        self.Init_Redshift_Var.trace("w", self.callback_NBodyTrace)
+        self.Init_Redshift = Entry(self.NBodyParms_group, textvariable=self.Init_Redshift_Var, width=10)
+        self.Init_Redshift.grid(row=1, column=3, sticky= W)
+        
+        self.Final_Redshift_label = Label(self.NBodyParms_group, text=u"Final Redshift")
+        self.Final_Redshift_label.grid(row=1, column=4, sticky= W)
+        self.Finl_RedshiftVar = DoubleVar()
+        self.Finl_RedshiftVar.trace("w", self.callback_NBodyTrace)
+        self.Finl_Redshift = Entry(self.NBodyParms_group, textvariable=self.Finl_RedshiftVar, width=10)
+        self.Finl_Redshift.grid(row=1, column=5, sticky= W)
+        
+        self.RunSeting_group = LabelFrame(self.RunSeting_Frame.interior, text = "Calculation Redshift")
+        #self.RunSeting_group.grid(row = 2, column = 0, columnspan = 6, rowspan = 1, sticky = W+E+N+S)
+        
+        self.usroutputlist = "True"
+        self.usroutputlist_var = StringVar()
+        self.usroutputlist_chk = Checkbutton(self.RunSeting_group, text= self.usroutputlist, variable = self.usroutputlist_var, onvalue = self.usroutputlist, offvalue = "")
+        self.usroutputlist_chk.grid(row=0, column=0, sticky= W, columnspan = 1)
+        
+        self.OutputList_Var = StringVar()
+        self.OutputList = Entry(self.RunSeting_group, textvariable=self.OutputList_Var, width=50)
+        self.OutputList.grid(row=0, column=1, sticky= W, columnspan = 10)
         
         self.Start_Redshift_label = Label(self.RunSeting_group, text=u"Start Redshift", image = zi_photo)
         self.Start_Redshift_label.photo = zi_photo
-        self.Start_Redshift_label.grid(row=0, column=0, sticky= W)
+        self.Start_Redshift_label.grid(row=1, column=0, sticky= W)
         
         self.Strt_Redshift_Var = DoubleVar()
         self.Strt_Redshift_Var.trace("w", self.Calc_Redshift)
         #self.Strt_Redshift_Var.trace("w", self.callback_NBodyTrace)
         self.Strt_Redshift = Entry(self.RunSeting_group, textvariable=self.Strt_Redshift_Var, width=10)
-        self.Strt_Redshift.grid(row=0, column=1, sticky= W)
+        self.Strt_Redshift.grid(row=1, column=1, sticky= W)
         
         self.End_Redshift_label = Label(self.RunSeting_group, text=u"End Redshift", image = zf_photo)
         self.End_Redshift_label.photo = zf_photo
-        self.End_Redshift_label.grid(row=0, column=2, sticky= W)
+        self.End_Redshift_label.grid(row=1, column=2, sticky= W)
 
         self.End_RedshiftVar = DoubleVar()
         self.End_RedshiftVar.trace("w", self.Calc_Redshift)
         self.End_Redshift = Entry(self.RunSeting_group, textvariable=self.End_RedshiftVar, width=10)
-        self.End_Redshift.grid(row=0, column=3, sticky= W)
+        self.End_Redshift.grid(row=1, column=3, sticky= W)
         
-        Label(self.RunSeting_group, text=u"Snaps Number").grid(row=0, column=4, sticky= W)
+        Label(self.RunSeting_group, text=u"Snaps Number").grid(row=1, column=4, sticky= W)
         self.Snaps_NumVar = IntVar()
         self.Snaps_NumVar.trace("w", self.Calc_Redshift)
         self.Snaps_Num = Entry(self.RunSeting_group, textvariable=self.Snaps_NumVar, width=10)
-        self.Snaps_Num.grid(row=0, column=5, sticky= W)
+        self.Snaps_Num.grid(row=1, column=5, sticky= W)
         
         self.Calc_Redshift_label = Label(self.RunSeting_group, text=u"Calculate Redshift", image = zcalc_photo)
         self.Calc_Redshift_label.photo = zcalc_photo
-        self.Calc_Redshift_label.grid(row=0, column=6, sticky= W)
+        self.Calc_Redshift_label.grid(row=1, column=6, sticky= W)
 
         self.Redshift_list = ('-')
         self.Redshift_listVar = DoubleVar()
         self.Redshift_listVar.trace("w", self.callback_NBodyTrace)
         self.Redshift_listOpt = OptionMenu(self.RunSeting_group, self.Redshift_listVar, *self.Redshift_list)
-        self.Redshift_listOpt.grid(row = 0, column = 7, pady = 5)
+        self.Redshift_listOpt.grid(row = 1, column = 7, pady = 5)
         self.Redshift_listVar.set(u'Select')
 
         #--------------------------------------
         self.Model_Selct_group = LabelFrame(self.NewRun_page, text = "Model Selection")
-        self.Model_Selct_group.grid(row = 3, column = 0, columnspan = 6, sticky = W+E+N+S)
+        self.Model_Selct_group.grid(row = 2, column = 0, columnspan = 6, rowspan = 2, sticky = W+E+N+S)
+        
+        self.Model_Selct_Frame = VSF.VerticalScrolledFrame(self.Model_Selct_group)
+        self.Model_Selct_Frame.pack(side="top", fill="both", expand=True)
+        
+        for x in range(13):
+            Grid.columnconfigure(self.Model_Selct_Frame.interior, x, weight=2)
 
         for x in range(13):
             Grid.columnconfigure(self.Model_Selct_group, x, weight=2)
+
 #        for y in range(4):
 #            Grid.rowconfigure(self.Model_Selct_group, y, weight=2)
 
         self.Cosmo_Models = ['LCDM', 'LCDM + f_NL', 'wCDM', 'qCDM', 'Gamma wCDM', 'Gamma qCDM', 'f(R)']
         self.Model_Params_Var = StringVar()
-        self.ModelOpt = OptionMenu(self.Model_Selct_group, self.Model_Params_Var, *self.Cosmo_Models, command = self.CosmoModelParm_Select)
+        self.ModelOpt = OptionMenu(self.Model_Selct_Frame.interior, self.Model_Params_Var, *self.Cosmo_Models, command = self.CosmoModelParm_Select)
         self.ModelOpt.grid(column = 0, row = 0, pady = 5, columnspan = 2, sticky = W+E+N+S)
         self.ModelOpt.config(width=15)
         self.Model_Params_Var.set(u'Select')
         
-        self.w_x_label = Label(self.Model_Selct_group, text="w_x", image = w_x_photo)
+        self.w_x_label = Label(self.Model_Selct_Frame.interior, text="w_x", image = w_x_photo)
         self.w_x_label.photo = w_x_photo
         self.w_x_label.grid(row=1, column=0, sticky= W+E+N+S)
         
         self.w_x_Var= DoubleVar()
         self.w_x_Var.trace("w", self.Calc_Redshift)
-        self.w_x = Entry(self.Model_Selct_group, textvariable=self.w_x_Var, width=10)
+        self.w_x = Entry(self.Model_Selct_Frame.interior, textvariable=self.w_x_Var, width=10)
         self.w_x.grid(row=1, column=1, sticky= W+E+N+S)
         
-        self.cs2_label = Label(self.Model_Selct_group, text="cs2", image = cs2_photo)
+        self.cs2_label = Label(self.Model_Selct_Frame.interior, text="cs2", image = cs2_photo)
         self.cs2_label.photo = cs2_photo
         self.cs2_label.grid(row=1, column=2, sticky= W+E+N+S)
         
         self.cs2_Var= DoubleVar()
         self.cs2_Var.trace("w", self.Calc_Redshift)
-        self.cs2 = Entry(self.Model_Selct_group, textvariable=self.cs2_Var, width=10)
+        self.cs2 = Entry(self.Model_Selct_Frame.interior, textvariable=self.cs2_Var, width=10)
         self.cs2.grid(row=1, column=3, sticky= W+E+N+S)
 
-        self.phi_0_label = Label(self.Model_Selct_group, text="phi_0", image = phi_0_photo)
+        self.phi_0_label = Label(self.Model_Selct_Frame.interior, text="phi_0", image = phi_0_photo)
         self.phi_0_label.photo = phi_0_photo
         self.phi_0_label.grid(row=1, column=4, sticky= W+E+N+S)
         
         self.phi_0_Var= DoubleVar()
-        self.phi_0 = Entry(self.Model_Selct_group, textvariable = self.phi_0_Var, width=10)
+        self.phi_0 = Entry(self.Model_Selct_Frame.interior, textvariable = self.phi_0_Var, width=10)
         self.phi_0.grid(row=1, column=5, sticky= W+E+N+S)
 
-        self.Gamma_label = Label(self.Model_Selct_group, text="Gamma", image = Gamma_photo)
+        self.Gamma_label = Label(self.Model_Selct_Frame.interior, text="Gamma", image = Gamma_photo)
         self.Gamma_label.photo = Gamma_photo
         self.Gamma_label.grid(row=1, column=6, sticky= W+E+N+S)
         
         self.GammaVar= DoubleVar()
-        self.Gamma= Entry(self.Model_Selct_group, textvariable=self.GammaVar, width=10)
+        self.Gamma= Entry(self.Model_Selct_Frame.interior, textvariable=self.GammaVar, width=10)
         self.Gamma.grid(row=1, column=7, sticky= W+E+N+S)
         
         
-        self.f_NL_label = Label(self.Model_Selct_group, text="f_NL", image = f_NL_photo)
+        self.f_NL_label = Label(self.Model_Selct_Frame.interior, text="f_NL", image = f_NL_photo)
         self.f_NL_label.photo = f_NL_photo
         self.f_NL_label.grid(row=2, column=0, sticky= W+E+N+S)
         
         self.f_NL_Var= DoubleVar()
         self.f_NL_Var.trace("w", self.callback_NBodyTrace)
-        self.f_NL= Entry(self.Model_Selct_group, textvariable=self.f_NL_Var, width=10)
+        self.f_NL= Entry(self.Model_Selct_Frame.interior, textvariable=self.f_NL_Var, width=10)
         self.f_NL.grid(row=2, column=1, sticky= W+E+N+S)
 
 
@@ -1281,75 +1426,21 @@ class Application(Frame):
 
 
         # N-Body Page :-------------------------
-        for x in range(13):
+        for x in range(6):
             Grid.columnconfigure(self.NBody_page, x, weight=2)
+
         for y in range(4):
             Grid.rowconfigure(self.NBody_page, y, weight=2)
-        
-        self.NBodyParms_group = LabelFrame(self.NBody_page, text = "N-Body Parameters")
-        self.NBodyParms_group.grid(row = 0, column = 0, columnspan =13 ,sticky = W+E+N+S)
 
-        for x in range(8):
-            Grid.columnconfigure(self.NBodyParms_group, x, weight=2)
-        
-        # N-Body Simulation Parameters :------- !!
-        Label(self.NBodyParms_group, text="Box Size").grid(row=0, column=0, sticky= W)
-        self.Box_SizeVar =  IntVar()
-        self.Box_SizeVar.trace("w", self.callback_NBodyTrace)
-        self.Box_Size = Entry(self.NBodyParms_group, textvariable=self.Box_SizeVar, width=10)
-        self.Box_Size.grid(row = 0, column = 1, sticky = W+E+N+S)
-        self.Box_Size.bind("<Return>", self.callback_Update_Entry)
-        Tooltip.ToolTip(self.Box_Size, follow_mouse = 1, text = "Please Enter Box Size in Mpc units")
-
-        Label(self.NBodyParms_group, text="N_part").grid(row=0, column=2, sticky= W)
-        self.N_partVar= IntVar()
-        self.N_partVar.trace("w", self.callback_NBodyTrace)
-        self.N_partVar.trace("w", self.callback_MakeOptionsTrace)
-        self.N_part= Entry(self.NBodyParms_group, textvariable=self.N_partVar, width=10)
-        self.N_part.grid(row=0, column=3, sticky= W+E+N+S)
-        Tooltip.ToolTip(self.N_part, follow_mouse=1, text="Please Enter Number of Particles^1/3")
-        
-        Label(self.NBodyParms_group, text="epsilon").grid(row=0, column=4, sticky= W)
-        self.epsilonVar = DoubleVar()
-        self.epsilonVar.trace("w", self.callback_NBodyTrace)
-        self.epsilon= Entry(self.NBodyParms_group, textvariable=self.epsilonVar, width=10)
-        self.epsilon.grid(row=0, column=5, sticky= W+E+N+S)
-        self.epsilon.bind("<Button-1>", self.softining_length)
-        Tooltip.ToolTip(self.epsilon, follow_mouse=1, text="Please Enter the Linkining length in Mpc units.")
-        
-        Label(self.NBodyParms_group, text="eta").grid(row=1, column=0, sticky= W)
-        self.etaVar= DoubleVar()
-        self.etaVar.trace("w", self.callback_NBodyTrace)
-        self.eta= Entry(self.NBodyParms_group, textvariable=self.etaVar, width=10)
-        self.eta.grid(row=1, column=1, sticky= W+E+N+S)
-
-        self.Initial_Redshift_label = Label(self.NBodyParms_group, text=u"Initial Redshift")
-        self.Initial_Redshift_label.grid(row=1, column=2, sticky= W)
-        self.Init_Redshift_Var = DoubleVar()
-        self.Init_Redshift_Var.trace("w", self.callback_NBodyTrace)
-        self.Init_Redshift = Entry(self.NBodyParms_group, textvariable=self.Init_Redshift_Var, width=10)
-        self.Init_Redshift.grid(row=1, column=3, sticky= W)
-        
-        self.Final_Redshift_label = Label(self.NBodyParms_group, text=u"Final Redshift")
-        self.Final_Redshift_label.grid(row=1, column=4, sticky= W)
-        self.Finl_RedshiftVar = DoubleVar()
-        self.Finl_RedshiftVar.trace("w", self.callback_NBodyTrace)
-        self.Finl_Redshift = Entry(self.NBodyParms_group, textvariable=self.Finl_RedshiftVar, width=10)
-        self.Finl_Redshift.grid(row=1, column=5, sticky= W)
-
-        #----------------------
-        self.AdvancedParms_group = LabelFrame(self.NBody_page, text = "Advanced Parameter Settings")
-        self.AdvancedParms_group.grid(row = 1, column = 0, rowspan = 10, columnspan =13, sticky = W+E+N+S)
-
-        for x in range(8):
-            Grid.columnconfigure(self.AdvancedParms_group, x, weight=2)
-        
-        self.AdvancedParms_frame =  VSF.VerticalScrolledFrame(self.AdvancedParms_group)
+        self.AdvancedParms_frame =  VSF.VerticalScrolledFrame(self.NBody_page)
         self.AdvancedParms_frame.pack(side="top", fill="both", expand=True)
+
+        for x in range(6):
+            Grid.columnconfigure(self.AdvancedParms_frame.interior, x, weight=2)
 
         # N-GenIC :----------
         self.NGenIC_group = LabelFrame(self.AdvancedParms_frame.interior, text = "N-GenIC", fg = 'red', width = 50)
-        self.NGenIC_group.grid(row = 0, column = 0, sticky = W+E+N+S)
+        self.NGenIC_group.grid(row = 0, column = 0, columnspan = 6, sticky = W+E+N+S)
         
         self.NGenIC_listVar = OrderedDict([]); self.NGenIC_Entry = OrderedDict([])
         for i in range(len(PrDt.NGenIC_dict)):
@@ -1365,7 +1456,7 @@ class Application(Frame):
 
         # Gadget2 :----------
         self.Gadget2_group = LabelFrame(self.AdvancedParms_frame.interior, text = "Gadget 2", fg = 'red', width = 50)
-        self.Gadget2_group.grid(row = 1, column = 0, sticky = W+E+N+S)
+        self.Gadget2_group.grid(row = 1, column = 0, columnspan = 6, sticky = W+E+N+S)
         
         self.Gadget2_listVar = OrderedDict([]); self.Gadget2_Entry = OrderedDict([])
         for i in range(len(PrDt.Gadget2_dict)):
@@ -1427,8 +1518,11 @@ class Application(Frame):
 
         for x in range(4):
             Grid.columnconfigure(self.Control_Frame, x, weight=2)
+
         for y in range(2):
             Grid.rowconfigure(self.Control_Frame, y, weight=2)
+        
+        Grid.rowconfigure(self.Control_Frame, 0, weight=0)
 
         self.Simulation_Run = Button(self.Control_Frame, text = u"QSub", foreground = 'red', command = self.QSub_Run)
         self.Simulation_Run.grid(column = 1, row = 0, pady = 5, sticky= W+E+N+S)
@@ -1436,16 +1530,25 @@ class Application(Frame):
         self.QStat = Button(self.Control_Frame, text = u"QStat", command =self.callback_QStat)
         self.QStat.grid(column = 2, row = 0, sticky= W+E+N+S, pady = 5)
         
-        self.Qlog = Button(self.Control_Frame, text = u"Logging", command =self.callback_Qlog)
-        self.Qlog.grid(column = 3, row = 0, sticky= W+E+N+S, pady = 5)
+        self.Qlogfiles_list = ['']
+        self.Qlogfiles_Var = StringVar()
+        self.Qlogfiles = OptionMenu(self.Control_Frame, self.Qlogfiles_Var, *self.Qlogfiles_list)
+        self.Qlogfiles.grid(row = 0, column = 3, columnspan = 1, pady = 5, sticky = W)
+        self.Qlogfiles.config(width=12)
+        self.Qlogfiles_Var.set(u'select')
+        self.Qlogfiles.bind("<Button-1>", self.logfiles_refresh)
+        
         self.logging_status = "ON"
-
+        self.Qlog = Button(self.Control_Frame, text = u"Log", command =self.callback_Qlog)
+        self.Qlog.grid(column = 4, row = 0, sticky= W+E+N+S, pady = 5)
+        self.Qlog.bind("<Button-1>", self.callback_logging_status)
+        
         self.clear_button = Button(self.Control_Frame, text="QDel", command= self.callback_QDel)
-        self.clear_button.grid(column = 4, row = 0, sticky = W+E+N+S, pady = 5)
+        self.clear_button.grid(column = 5, row = 0, sticky = W+E+N+S, pady = 5)
 
         self.QJob_Var = StringVar()
-        self.QJob_Entry = Entry(self.Control_Frame, textvariable = self.QJob_Var, foreground = 'red')
-        self.QJob_Entry.grid(column = 5, row = 0, sticky = W+E+N+S, pady = 5)
+        self.QJob_Entry = Entry(self.Control_Frame, textvariable = self.QJob_Var, foreground = 'red', width = 8)
+        self.QJob_Entry.grid(column = 6, row = 0, sticky = W+E+N+S, pady = 5)
 
         #-----------------------------------
         self.Jobs_List_group = LabelFrame(self.Control_Frame, text = "Jobs List")
@@ -1455,15 +1558,7 @@ class Application(Frame):
         self.Jobs_List_Lb = Listbox(self.Jobs_List_group, selectmode = EXTENDED, bg = "white smoke")
         self.Jobs_List_Lb.grid(row = 0, column = 0, sticky = W+E+N+S)
 
-        self.list = OrderedDict([("N-Body Simulation", ['CAMB', 'N-GenIC', 'Gadget2']), ("+AHF", None), ("+POWMS", None) ])
-        
-        for i in range(len(self.list)):
-            self.Jobs_List_Lb.insert(END, self.list.keys()[i])
-
-        self.Jobs_List_Lb.itemconfig(0, {'fg':'red'})
-        self.Jobs_List_Lb.itemconfig(1, {'fg':'blue'})
-        self.Jobs_List_Lb.itemconfig(2, {'fg':'blue'})
-
+        self.list = OrderedDict([])
         self.Running_Jobs_group = LabelFrame(self.Control_Frame, text = "Runing Jobs")
         self.Running_Jobs_group.grid(row = 1, column = 1, rowspan = 1, columnspan = 8, sticky = W+E+N+S)
         Grid.columnconfigure(self.Running_Jobs_group, 0, weight=2);Grid.rowconfigure(self.Running_Jobs_group, 0, weight=2)
@@ -1485,24 +1580,8 @@ class Application(Frame):
             for i in range(len(test[test.keys()[index]])):
                 self.Run_Delete(test[test.keys()[index]][i])
         
-        def logfile_add(event, test):
-            w = event.widget
-            index = int(w.curselection()[0])
-            logname = self.Run_nameVar.get() + '_' + test[test.keys()[index]][-1] + '.output'
-            self.logfile_name = os.path.join(self.Remote_DirtVar.get(), self.Run_nameVar.get(), logname)
-            self.logging_status = "ON"
-            #self.logfile_name = self.sftp.open(logfile1_loc, 'r')
-            
-        def logfile_close(event, test):
-            w = event.widget
-            index = int(w.curselection()[0])
-            self.logging_status = "OFF"
-        
         self.Jobs_List_Lb.bind('<Return>', lambda event: Job_add(event, self.list))
         self.Running_Jobs_Lb.bind('<BackSpace>', lambda event: Job_remove(event, self.list))
-        self.Running_Jobs_Lb.bind('<Return>', lambda event: logfile_add(event, self.list))
-        self.Running_Jobs_Lb.bind('<Double-Button-1>', lambda event: logfile_close(event, self.list))
-        
     #------------------------------------------------------
     def callback_codes(self):
         self.main_nb.select(self.Main_page); self.NewRun_nb.select(self.Codes_Compile_page)
@@ -1556,8 +1635,11 @@ class Application(Frame):
             self.client.connect(str(self.Host_Server_Var.get()), username = str(self.UserName_Var.get()), password = str(self.PassWord_Var.get()))
             # sftp :---------
             self.sftp = paramiko.SFTPClient.from_transport(self.transport)
+            
             # Directory defination :-----
             self.remote_dirct = self.client.exec_command('pwd')[1].read().strip()
+            self.logger.debug(self.remote_dirct)
+            
             self.Remote_DirtVar.set(self.remote_dirct)
             self.ModelRemote_DirtVar.set(self.remote_dirct)
             self.run_mode_logic = "network"
@@ -1574,31 +1656,39 @@ class Application(Frame):
             self.run_mode_logic = "local"
 
     def callback_QStat(self):
+        self.logger.info('QStat !!')
         stdin, stdout, stderr = self.client.exec_command('qstat -u ' + self.UserName_Var.get())
+        #self.logger.debug(stdin.read()); self.logger.info(stdout.read()); self.logger.error(stderr.read())
+        
         self.text_area.delete(1.0, END)
         self.text_area.insert(END, stdout.read())
-    
+
     def callback_Qlog(self):
-    
-        def logread():
-            stdouttail = self.client.exec_command('tail -f ' + self.logfile_name)[1]
+        Qlogfile_name = os.path.join(self.Remote_DirtVar.get(), self.Run_nameVar.get(), self.Qlogfiles_Var.get())
+        stdouttail = self.client.exec_command('tail -f ' + Qlogfile_name)[1]
+        
+        self.formatter = logging.Formatter('%(message)s')
+        self.console.setFormatter(self.formatter)
+        
+        def logging_func():
             while True:
-                if self.logging_status == "ON":
-                    line = stdouttail.readline()
-                    logger.info(line)
-                elif self.logging_status == "OFF":
+                line = stdouttail.readline()
+                if self.logging_status == 'ON':
+                    self.logger.info(line)
+                else:
                     break
     
-        #------------
         self.logging_area.delete(1.0, END)
-        t = Thread(target=logread)
-        stdoutconsl = StdoutDirector(self.logging_area)
-        logger = logging.getLogger()
-        console = logging.StreamHandler(stream=stdoutconsl)
-        logger.addHandler(console)
-        t.daemon = True
-        #-----------------------------
+        t = Thread(target=logging_func)
         t.start()
+        
+    def callback_logging_status(self, event):
+        if self.logging_status == 'ON':
+            self.Qlog.configure(text = u"Log")
+            self.logging_status = 'OFF'
+        elif self.logging_status == 'OFF':
+            self.Qlog.configure(text = u"Logging")
+            self.logging_status = 'ON'
 
     def callback_QDel(self):
         stdin, stdoutqdel, stderr = self.client.exec_command('qdel ' + self.QJob_Var.get())
@@ -1728,9 +1818,10 @@ class Application(Frame):
             x.grid_make_idl(xx.loc_ICs, self.Box_SizeVar.get(), self.N_partVar.get()); x.camb_to_gadget(xx.loc_ICs)
             x.qsub_task_run(xx.loc_pbs_jobs, self.Running_Jobs_Lb.get(1, END))
         
-        x.output_times(self.Strt_Redshift_Var.get(), self.End_RedshiftVar.get(), self.Snaps_NumVar.get())
+        x.output_times(self.Strt_Redshift_Var.get(), self.End_RedshiftVar.get(), self.Snaps_NumVar.get(), self.usroutputlist_var.get(), map(double, self.OutputList_Var.get().split(',')))
         subprocess_cmd("cd " + self.DirtVar.get() + " && zip -r -FSr " +  self.Run_nameVar.get() + ".zip " + self.Run_nameVar.get())
         
+        #self.logger.debug(stdin_zip.read()); self.logger.info(stdout_zip.read()); self.logger.error(stderr_zip.read())
         if self.run_mode_logic != "local":
             # sftp Upload :---------------------
             filepath = os.path.join(self.Remote_DirtVar.get(), self.Run_name.get()) + ".zip"
@@ -1832,6 +1923,7 @@ class Application(Frame):
 
     #------------------------------------
     def CosmoParm_Select(self, value):
+        self.logger.info('Setting %s Cosmological Parameters.' %value)
         if value == 'Planck':
             self.Omega_l_Var.set(0.6817); self.Omega_m_Var.set(0.2678); self.Omega_bVar.set(0.049)
             self.n_sVar.set(0.9619);self.sigma_8Var.set(0.8347); self.H_0Var.set(0.6704)
@@ -1900,6 +1992,7 @@ class Application(Frame):
 
 
     def CosmoModelParm_Select(self,value):
+        self.logger.info('Setting %s Cosmology Model.' %value)
         if value == 'LCDM':
             self.phi_0_label.grid_forget(); self.phi_0.grid_forget(); self.Gamma_label.grid_forget()
             self.Gamma.grid_forget(); self.f_NL_label.grid_forget(); self.f_NL.grid_forget()
@@ -1922,6 +2015,22 @@ class Application(Frame):
             self.Gamma_label.grid_forget(); self.Gamma.grid_forget()
             self.w_x_Var.set(-0.9); self.cs2_Var.set(1.0)
 
+    def JobsOpt_Select(self, value):
+        if value == "N-Body Simulation":
+            self.list[value] = ['CAMB', 'N-GenIC', 'Gadget2']
+            self.NBodyParms_group.grid(row = 1, column = 0, columnspan = 6, rowspan = 1, sticky = W+E+N+S)
+            self.RunSeting_group.grid(row = 2, column = 0, columnspan = 6, rowspan = 1, sticky = W+E+N+S)
+        else:
+            self.list[value] = None
+            self.NBodyParms_group.grid_forget()
+
+    def callback_AddJobList(self):
+        self.Jobs_List_Lb.insert(END, self.JobsOpt_Var.get())
+        if  self.JobsOpt_Var.get() == "N-Body Simulation":
+            self.Jobs_List_Lb.itemconfig(END, {'fg':'red'})
+        else:
+            self.Jobs_List_Lb.itemconfig(END, {'fg':'blue'})
+
     def Calc_Redshift(self, *args):
         self.Redshift_listOpt['menu'].delete(0, 'end')
         self.a_ini = 1.0/(float(self.Strt_Redshift_Var.get()) + 1.0)
@@ -1930,7 +2039,11 @@ class Application(Frame):
         log_a_bin = (log_a_end-log_a_start)/(self.Snaps_NumVar.get() - 1.0)
         log_a_output = [log_a_start + (i * log_a_bin) for i in range(self.Snaps_NumVar.get())]
         a_output  = [10.0**log_a_output[i] for i in range(self.Snaps_NumVar.get())]
-        z_out = 1.0/array(a_output) - 1.0
+        
+        if self.usroutputlist_var.get() == "True":
+            z_out = map(double, self.OutputList_Var.get().split(','))
+        else:
+            z_out = 1.0/array(a_output) - 1.0
         
         self.Snaps_dict = {}
         self.Redshift_list_new = [str(round(z_out[i] ,3)) for i in range(self.Snaps_NumVar.get())]
@@ -1959,15 +2072,31 @@ class Application(Frame):
     def results_refresh(self, *args):
         if self.run_mode_logic == "local":
             Results_loc = os.path.join(self.ModelDirtVar.get(), self.RunName_Var.get())
-            self.Results_Files_new = sorted(os.listdir(Results_loc))
+            self.Results_Files_new = sorted([x for x in os.listdir(Results_loc) if not os.path.splitext(x)[1] in ('.error', '.output')])
+            self.logfiles_new = sorted([x for x in os.listdir(Results_loc) if os.path.splitext(x)[1] in ('.error', '.output')])
         else:
             Results_loc = os.path.join(self.ModelRemote_DirtVar.get(), self.RunName_Var.get())
-            self.Results_Files_new = sorted(self.sftp.listdir(Results_loc))
+            self.Results_Files_new = sorted([x for x in self.sftp.listdir(Results_loc) if not os.path.splitext(x)[1] in ('.error', '.output')])
+            self.logfiles_new = sorted([x for x in self.sftp.listdir(Results_loc) if os.path.splitext(x)[1] in ('.error', '.output')])
 
         self.RunResults['menu'].delete(0,"end"); self.logfiles['menu'].delete(0,"end")
         for choice in self.Results_Files_new:
             self.RunResults['menu'].add_command(label=choice, command=_setit(self.RunResults_Var, choice))
+        for choice in self.logfiles_new:
             self.logfiles['menu'].add_command(label=choice, command=_setit(self.logfiles_Var, choice))
+
+
+    def logfiles_refresh(self, event):
+        if self.run_mode_logic == "local":
+            logfiles_loc = os.path.join(self.DirtVar.get(), self.Run_nameVar.get())
+            self.Qlogfiles_new = sorted([x for x in os.listdir(logfiles_loc) if os.path.splitext(x)[1] in ('.error', '.output')])
+        else:
+            logfiles_loc = os.path.join(self.Remote_DirtVar.get(), self.Run_nameVar.get())
+            self.Qlogfiles_new = sorted([x for x in self.sftp.listdir(logfiles_loc) if os.path.splitext(x)[1] in ('.error', '.output')])
+        
+        self.Qlogfiles['menu'].delete(0,"end")
+        for choice in self.Qlogfiles_new:
+            self.Qlogfiles['menu'].add_command(label=choice, command=_setit(self.Qlogfiles_Var, choice))
 
     def datafiles_refresh(self, *args):
         if self.run_mode_logic == "local":
@@ -1989,13 +2118,19 @@ class Application(Frame):
     def callback_setheader(self):
         if self.header_status == "OFF":
             self.Header_Entry.pack(side="left", fill="both", expand=True)
+            self.Add_btt.pack(side="right")
             self.HeaderConversion_Entry.pack(side="right", fill="both", expand=True)
             self.header_status = "ON"
         else:
             self.Header_Entry.pack_forget()
             self.HeaderConversion_Entry.pack_forget()
+            self.Add_btt.pack_forget()
             self.header_status = "OFF"
 
+    def callback_file_update(self):
+        file = open(os.path.join(self.ModelDirtVar.get(), self.RunName_Var.get(), self.RunResults_Var.get(), self.Runfile_Var.get()), 'w')
+        file.write(self.file_preview.get('1.0', END).strip())
+    
     def callback_Addfile(self):
         self.fileload[self.Runfile_Var.get()] = os.path.join(self.ModelDirtVar.get(), self.RunName_Var.get(), self.RunResults_Var.get(), self.Runfile_Var.get())
         self.plotlist[self.Runfile_Var.get()] = self.HeaderVar.get().split()
